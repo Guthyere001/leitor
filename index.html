@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leitor & Arquivador de Livros</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        },
+                        amberWood: {
+                            100: '#fef3c7',
+                            800: '#92400e',
+                            900: '#78350f',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Merriweather', 'Georgia', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Tesseract.js para OCR offline/in-browser -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- Cropper.js CSS & JS para recorte preciso -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&display=swap" rel="stylesheet">
+    <style>
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.4);
+            border-radius: 9999px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: rgba(75, 85, 99, 0.5);
+        }
+        .drop-zone--over {
+            border-color: #22c55e !important;
+            background-color: rgba(34, 197, 94, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans min-h-screen transition-colors duration-200 flex flex-col">
+
+    <!-- Header / Navbar -->
+    <header class="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-brand-500 text-white rounded-xl shadow-lg shadow-brand-500/20">
+                    <i data-lucide="book-open" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-tight">Leitor OCR Pro</h1>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Scanner e Processador de Páginas</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <button id="themeToggle" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+                    <i data-lucide="moon" class="w-5 h-5 block dark:hidden"></i>
+                </button>
+                <div class="h-6 w-px bg-slate-200 dark:bg-slate-800"></div>
+                <button id="btnStats" class="flex items-center space-x-1 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <i data-lucide="library" class="w-4 h-4"></i>
+                    <span>Total: <strong id="totalCount">0</strong> págs</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Panel: Scanner & Preprocessing Controls (6 Cols) -->
+        <section class="lg:col-span-6 flex flex-col space-y-6">
+            
+            <!-- Upload & Image Processing Studio -->
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="font-semibold text-slate-900 dark:text-white flex items-center space-x-2">
+                        <i data-lucide="sliders" class="w-5 h-5 text-brand-500"></i>
+                        <span>Processador de Imagem OCR</span>
+                    </h2>
+                    <!-- Select Language -->
+                    <div class="flex items-center space-x-1">
+                        <i data-lucide="languages" class="w-4 h-4 text-slate-400"></i>
+                        <select id="ocrLanguage" class="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 font-medium focus:outline-none">
+                            <option value="por" selected>Português</option>
+                            <option value="eng">Inglês</option>
+                            <option value="spa">Espanhol</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Drop Zone & Image Editor Canvas -->
+                <div id="dropZone" class="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl min-h-[220px] p-4 text-center hover:border-brand-500 dark:hover:border-brand-500 transition relative flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-900/50 overflow-hidden">
+                    <input type="file" id="fileInput" accept="image/*" class="hidden">
+                    
+                    <!-- Cropper Container -->
+                    <div id="editorContainer" class="hidden w-full max-h-[320px] flex items-center justify-center overflow-hidden rounded-lg bg-black/40">
+                        <img id="editorImage" class="max-w-full max-h-[320px] block">
+                    </div>
+
+                    <div id="dropZoneContent" class="flex flex-col items-center space-y-2 py-6">
+                        <div class="p-3 bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 rounded-full group-hover:scale-110 transition">
+                            <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-slate-700 dark:text-slate-200">Arraste a foto da página ou <span class="text-brand-600 dark:text-brand-400 font-semibold cursor-pointer" onclick="fileInput.click()">clique para carregar</span></p>
+                            <p class="text-xs text-slate-400 mt-1">Ajuste o brilho, binarização e recorte para máxima precisão</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Sliders & Actions (Visible when image is loaded) -->
+                <div id="imageControls" class="hidden flex-col space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <!-- Brightness -->
+                        <div>
+                            <div class="flex justify-between mb-1 text-slate-600 dark:text-slate-400">
+                                <span>Brilho</span>
+                                <span id="valBrightness">0</span>
+                            </div>
+                            <input type="range" id="rangeBrightness" min="-100" max="100" value="0" class="w-full accent-brand-500">
+                        </div>
+                        <!-- Contrast -->
+                        <div>
+                            <div class="flex justify-between mb-1 text-slate-600 dark:text-slate-400">
+                                <span>Contraste</span>
+                                <span id="valContrast">30</span>
+                            </div>
+                            <input type="range" id="rangeContrast" min="-100" max="100" value="30" class="w-full accent-brand-500">
+                        </div>
+                        <!-- Threshold / Binarization -->
+                        <div>
+                            <div class="flex justify-between mb-1 text-slate-600 dark:text-slate-400">
+                                <span>Limiar P&B (Binarização)</span>
+                                <span id="valThreshold">140</span>
+                            </div>
+                            <input type="range" id="rangeThreshold" min="50" max="220" value="140" class="w-full accent-brand-500">
+                        </div>
+                        <!-- Sharpening Toggle -->
+                        <div class="flex items-center justify-between pt-3">
+                            <label class="text-slate-600 dark:text-slate-400 font-medium cursor-pointer flex items-center space-x-2">
+                                <input type="checkbox" id="checkBinarize" checked class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+                                <span>Modo P&B Adaptativo</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Rotation & Tool Buttons -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <div class="flex items-center space-x-1">
+                            <button id="btnRotateCcw" title="Girar 90° Anti-horário" class="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs transition">
+                                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                            </button>
+                            <button id="btnRotateCw" title="Girar 90° Horário" class="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs transition">
+                                <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                            </button>
+                            <button id="btnResetFilters" title="Restaurar Padrões" class="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs transition font-medium">
+                                Resetar
+                            </button>
+                        </div>
+
+                        <button id="btnExecuteOCR" class="flex-1 sm:flex-none py-2 px-4 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs rounded-lg shadow-lg shadow-brand-600/20 transition flex items-center justify-center space-x-1.5">
+                            <i data-lucide="scan-text" class="w-4 h-4"></i>
+                            <span>Executar OCR Otimizado</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Side-by-side Preview (Processed Image sent to OCR) -->
+                <div id="processedPreviewBox" class="hidden border-t border-slate-100 dark:border-slate-800 pt-3">
+                    <span class="text-xs font-semibold text-slate-500 mb-2 block">Imagem Binarizada para o OCR (Resultado do Filtro):</span>
+                    <div class="w-full max-h-40 bg-slate-950 rounded-lg flex items-center justify-center overflow-hidden p-2">
+                        <canvas id="processedCanvas" class="max-h-36 max-w-full object-contain rounded"></canvas>
+                    </div>
+                </div>
+
+                <!-- Sample & Action Buttons -->
+                <div class="flex items-center space-x-2 pt-1">
+                    <button id="btnSample" class="flex-1 text-xs py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-lg transition flex items-center justify-center space-x-1.5">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-500"></i>
+                        <span>Carregar Exemplo de Teste</span>
+                    </button>
+                </div>
+
+                <!-- OCR Progress Indicator -->
+                <div id="ocrProgressContainer" class="hidden space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div class="flex justify-between text-xs text-slate-600 dark:text-slate-400 font-medium">
+                        <span id="ocrStatusText">Processando OCR...</span>
+                        <span id="ocrPercent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div id="ocrProgressBar" class="bg-brand-500 h-full w-0 transition-all duration-200"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Details -->
+            <form id="pageForm" class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col space-y-4">
+                <h2 class="font-semibold text-slate-900 dark:text-white flex items-center space-x-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <i data-lucide="file-edit" class="w-5 h-5 text-brand-500"></i>
+                    <span id="formTitleText">Dados da Página</span>
+                </h2>
+
+                <input type="hidden" id="editPageId" value="">
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Título do Livro *</label>
+                        <input type="text" id="bookTitle" required placeholder="Ex: Dom Casmurro" class="w-full text-sm px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-900 dark:text-slate-100">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Nº Página *</label>
+                        <input type="number" id="pageNumber" min="1" required placeholder="Ex: 42" class="w-full text-sm px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-900 dark:text-slate-100">
+                    </div>
+                </div>
+
+                <div class="flex-1 flex flex-col min-h-[160px]">
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400">Texto Extraído / Revisão *</label>
+                        <span id="charCounter" class="text-[10px] text-slate-400">0 caracteres</span>
+                    </div>
+                    <textarea id="pageText" required placeholder="O texto reconhecido aparecerá aqui para você conferir e ajustar se necessário..." class="w-full flex-1 p-3 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-900 dark:text-slate-100 font-serif leading-relaxed resize-y min-h-[140px]"></textarea>
+                </div>
+
+                <div class="flex items-center space-x-2 pt-2">
+                    <button type="button" id="btnCancelEdit" class="hidden px-4 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition">
+                        Cancelar
+                    </button>
+                    <button type="submit" id="btnSave" class="flex-1 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-medium text-sm rounded-lg shadow-lg shadow-brand-600/20 transition flex items-center justify-center space-x-2">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        <span id="btnSaveText">Salvar Página</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Right Panel: History, Search & Reader View (6 Cols) -->
+        <section class="lg:col-span-6 flex flex-col space-y-4">
+            
+            <!-- Search & Filter Controls -->
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col space-y-3">
+                <div class="flex items-center justify-between">
+                    <h2 class="font-semibold text-slate-900 dark:text-white flex items-center space-x-2">
+                        <i data-lucide="library" class="w-5 h-5 text-brand-500"></i>
+                        <span>Acervo Digital</span>
+                    </h2>
+                    
+                    <!-- Export Actions -->
+                    <div class="flex items-center space-x-1">
+                        <button id="exportJson" title="Exportar para JSON" class="p-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition">
+                            JSON
+                        </button>
+                        <button id="exportCsv" title="Exportar para CSV" class="p-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition">
+                            CSV
+                        </button>
+                        <button id="exportTxt" title="Exportar para TXT" class="p-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition">
+                            TXT
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <!-- Search Input -->
+                    <div class="relative">
+                        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" id="searchInput" placeholder="Buscar texto ou página..." class="w-full text-xs pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-900 dark:text-slate-100">
+                    </div>
+
+                    <!-- Book Select Filter -->
+                    <select id="bookFilter" class="w-full text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-900 dark:text-slate-100">
+                        <option value="">Todos os Livros</option>
+                    </select>
+                </div>
+
+                <div class="text-[11px] text-slate-400 flex justify-between items-center pt-1">
+                    <span id="resultsCount">Mostrando 0 páginas</span>
+                </div>
+            </div>
+
+            <!-- List of Saved Pages -->
+            <div id="pagesList" class="flex-1 flex flex-col space-y-3 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
+                <!-- Dynamically populated pages -->
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Reader Fullscreen Modal -->
+    <div id="readerModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                    <h3 id="modalBookTitle" class="font-bold text-lg text-slate-900 dark:text-white leading-tight"></h3>
+                    <p id="modalPageNum" class="text-xs text-brand-600 dark:text-brand-400 font-semibold"></p>
+                </div>
+                <button id="btnCloseModal" class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-6 overflow-y-auto flex-1 font-serif text-slate-800 dark:text-slate-200 text-base leading-relaxed whitespace-pre-wrap" id="modalTextContent">
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400 bg-slate-50 dark:bg-slate-900/50">
+                <span id="modalDate"></span>
+                <div class="flex items-center space-x-2">
+                    <button id="btnCopyModalText" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-medium transition flex items-center space-x-1">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        <span>Copiar Texto</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // State Management
+        let pages = [];
+        let currentFilterBook = '';
+        let currentSearchQuery = '';
+        let activeEditId = null;
+        let cropper = null;
+        let originalImageObj = null;
+
+        // Sample Data for Testing
+        const SAMPLE_TEXT = "Capítulo I\n\nA noite estava fria e silenciosa na antiga biblioteca da cidade. As prateleiras de madeira maciça sustentavam séculos de conhecimento acumulado. Entre as páginas amareladas dos velhos tomos, segredos aguardavam pacientemente por leitores curiosos capazes de decifrar suas histórias esquecidas.";
+        const SAMPLE_TITLE = "As Crônicas da Biblioteca";
+        const SAMPLE_PAGE = "15";
+
+        // DOM Elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const dropZoneContent = document.getElementById('dropZoneContent');
+        const editorContainer = document.getElementById('editorContainer');
+        const editorImage = document.getElementById('editorImage');
+        const imageControls = document.getElementById('imageControls');
+        const processedPreviewBox = document.getElementById('processedPreviewBox');
+        const processedCanvas = document.getElementById('processedCanvas');
+        
+        // Image Processing Controls
+        const rangeBrightness = document.getElementById('rangeBrightness');
+        const rangeContrast = document.getElementById('rangeContrast');
+        const rangeThreshold = document.getElementById('rangeThreshold');
+        const checkBinarize = document.getElementById('checkBinarize');
+        const valBrightness = document.getElementById('valBrightness');
+        const valContrast = document.getElementById('valContrast');
+        const valThreshold = document.getElementById('valThreshold');
+        const btnRotateCw = document.getElementById('btnRotateCw');
+        const btnRotateCcw = document.getElementById('btnRotateCcw');
+        const btnResetFilters = document.getElementById('btnResetFilters');
+        const btnExecuteOCR = document.getElementById('btnExecuteOCR');
+        const ocrLanguage = document.getElementById('ocrLanguage');
+
+        const ocrProgressContainer = document.getElementById('ocrProgressContainer');
+        const ocrStatusText = document.getElementById('ocrStatusText');
+        const ocrPercent = document.getElementById('ocrPercent');
+        const ocrProgressBar = document.getElementById('ocrProgressBar');
+
+        const pageForm = document.getElementById('pageForm');
+        const bookTitleInput = document.getElementById('bookTitle');
+        const pageNumberInput = document.getElementById('pageNumber');
+        const pageTextInput = document.getElementById('pageText');
+        const editPageIdInput = document.getElementById('editPageId');
+        const btnSave = document.getElementById('btnSave');
+        const btnSaveText = document.getElementById('btnSaveText');
+        const btnCancelEdit = document.getElementById('btnCancelEdit');
+        const formTitleText = document.getElementById('formTitleText');
+        const charCounter = document.getElementById('charCounter');
+
+        const pagesList = document.getElementById('pagesList');
+        const searchInput = document.getElementById('searchInput');
+        const bookFilter = document.getElementById('bookFilter');
+        const resultsCount = document.getElementById('resultsCount');
+        const totalCount = document.getElementById('totalCount');
+
+        const themeToggle = document.getElementById('themeToggle');
+        const readerModal = document.getElementById('readerModal');
+        const btnCloseModal = document.getElementById('btnCloseModal');
+        const modalBookTitle = document.getElementById('modalBookTitle');
+        const modalPageNum = document.getElementById('modalPageNum');
+        const modalTextContent = document.getElementById('modalTextContent');
+        const modalDate = document.getElementById('modalDate');
+        const btnCopyModalText = document.getElementById('btnCopyModalText');
+
+        // Initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadPagesFromStorage();
+            setupTheme();
+            setupEventListeners();
+            render();
+        });
+
+        // LocalStorage Logic
+        function loadPagesFromStorage() {
+            try {
+                const stored = localStorage.getItem('book_reader_pages');
+                pages = stored ? JSON.parse(stored) : [];
+            } catch (e) {
+                console.error("Erro ao carregar do localStorage", e);
+                pages = [];
+            }
+        }
+
+        function savePagesToStorage() {
+            try {
+                localStorage.setItem('book_reader_pages', JSON.stringify(pages));
+            } catch (e) {
+                showToast("Erro ao salvar dados localmente", "error");
+            }
+        }
+
+        // Theme Toggle
+        function setupTheme() {
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+
+            themeToggle.addEventListener('click', () => {
+                if (document.documentElement.classList.contains('dark')) {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.theme = 'light';
+                } else {
+                    document.documentElement.classList.add('dark');
+                    localStorage.theme = 'dark';
+                }
+            });
+        }
+
+        // Event Listeners setup
+        function setupEventListeners() {
+            // Drag and drop handlers
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.add('drop-zone--over');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.remove('drop-zone--over');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files && files.length > 0) {
+                    handleFileSelect(files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (fileInput.files && fileInput.files[0]) {
+                    handleFileSelect(fileInput.files[0]);
+                }
+            });
+
+            // Sliders & Filter Controls
+            rangeBrightness.addEventListener('input', (e) => {
+                valBrightness.textContent = e.target.value;
+                updateProcessedPreview();
+            });
+
+            rangeContrast.addEventListener('input', (e) => {
+                valContrast.textContent = e.target.value;
+                updateProcessedPreview();
+            });
+
+            rangeThreshold.addEventListener('input', (e) => {
+                valThreshold.textContent = e.target.value;
+                updateProcessedPreview();
+            });
+
+            checkBinarize.addEventListener('change', () => {
+                updateProcessedPreview();
+            });
+
+            btnRotateCw.addEventListener('click', () => {
+                if (cropper) {
+                    cropper.rotate(90);
+                    setTimeout(updateProcessedPreview, 200);
+                }
+            });
+
+            btnRotateCcw.addEventListener('click', () => {
+                if (cropper) {
+                    cropper.rotate(-90);
+                    setTimeout(updateProcessedPreview, 200);
+                }
+            });
+
+            btnResetFilters.addEventListener('click', () => {
+                rangeBrightness.value = 0;
+                rangeContrast.value = 30;
+                rangeThreshold.value = 140;
+                checkBinarize.checked = true;
+                valBrightness.textContent = "0";
+                valContrast.textContent = "30";
+                valThreshold.textContent = "140";
+                if (cropper) cropper.reset();
+                updateProcessedPreview();
+            });
+
+            btnExecuteOCR.addEventListener('click', () => {
+                const canvas = getProcessedCanvas();
+                if (canvas) {
+                    runOCR(canvas.toDataURL('image/png'));
+                }
+            });
+
+            btnSample.addEventListener('click', loadSampleData);
+
+            // Form Submit
+            pageForm.addEventListener('submit', handleFormSubmit);
+            btnCancelEdit.addEventListener('click', resetForm);
+
+            // Character counter
+            pageTextInput.addEventListener('input', () => {
+                charCounter.textContent = `${pageTextInput.value.length} caracteres`;
+            });
+
+            // Search and Filter
+            searchInput.addEventListener('input', (e) => {
+                currentSearchQuery = e.target.value.toLowerCase();
+                render();
+            });
+
+            bookFilter.addEventListener('change', (e) => {
+                currentFilterBook = e.target.value;
+                render();
+            });
+
+            // Export Buttons
+            document.getElementById('exportJson').addEventListener('click', exportAsJSON);
+            document.getElementById('exportCsv').addEventListener('click', exportAsCSV);
+            document.getElementById('exportTxt').addEventListener('click', exportAsTXT);
+
+            // Modal events
+            btnCloseModal.addEventListener('click', closeModal);
+            readerModal.addEventListener('click', (e) => {
+                if (e.target === readerModal) closeModal();
+            });
+            btnCopyModalText.addEventListener('click', () => {
+                copyToClipboard(modalTextContent.innerText);
+            });
+        }
+
+        // File handling & Cropper Setup
+        function handleFileSelect(file) {
+            if (!file.type.startsWith('image/')) {
+                showToast("Por favor, selecione um arquivo de imagem válido.", "error");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                initCropper(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function initCropper(imageSrc) {
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+
+            editorImage.src = imageSrc;
+            dropZoneContent.classList.add('hidden');
+            editorContainer.classList.remove('hidden');
+            imageControls.classList.remove('hidden');
+            imageControls.classList.add('flex');
+            processedPreviewBox.classList.remove('hidden');
+
+            cropper = new Cropper(editorImage, {
+                viewMode: 1,
+                autoCropArea: 0.9,
+                responsive: true,
+                restore: false,
+                cropend: () => updateProcessedPreview(),
+                ready: () => {
+                    updateProcessedPreview();
+                }
+            });
+        }
+
+        // Image Pre-processing Pipeline (Canvas Binarization & Filters)
+        function getProcessedCanvas() {
+            if (!cropper) return null;
+
+            // Get cropped image canvas
+            const croppedCanvas = cropper.getCroppedCanvas({
+                maxWidth: 2000,
+                maxHeight: 2000,
+                imageSmoothingEnabled: true,
+                imageSmoothingQuality: 'high',
+            });
+
+            if (!croppedCanvas) return null;
+
+            const ctx = processedCanvas.getContext('2d');
+            processedCanvas.width = croppedCanvas.width;
+            processedCanvas.height = croppedCanvas.height;
+
+            // Draw cropped image into target canvas
+            ctx.drawImage(croppedCanvas, 0, 0);
+
+            // Get image pixels for processing
+            const imageData = ctx.getImageData(0, 0, processedCanvas.width, processedCanvas.height);
+            const data = imageData.data;
+
+            const brightness = parseInt(rangeBrightness.value, 10);
+            const contrast = parseInt(rangeContrast.value, 10);
+            const threshold = parseInt(rangeThreshold.value, 10);
+            const isBinarize = checkBinarize.checked;
+
+            // Contrast factor formula
+            const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+            for (let i = 0; i < data.length; i += 4) {
+                let r = data[i];
+                let g = data[i + 1];
+                let b = data[i + 2];
+
+                // 1. Apply Brightness
+                r += brightness;
+                g += brightness;
+                b += brightness;
+
+                // 2. Apply Contrast
+                r = factor * (r - 128) + 128;
+                g = factor * (g - 128) + 128;
+                b = factor * (b - 128) + 128;
+
+                // 3. Grayscale (Luminance weighting)
+                let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+
+                // 4. Binarization (Thresholding to produce sharp Black & White)
+                if (isBinarize) {
+                    gray = gray >= threshold ? 255 : 0;
+                }
+
+                // Clamp values 0-255
+                gray = Math.min(255, Math.max(0, gray));
+
+                data[i] = gray;
+                data[i + 1] = gray;
+                data[i + 2] = gray;
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            return processedCanvas;
+        }
+
+        function updateProcessedPreview() {
+            getProcessedCanvas();
+        }
+
+        // Tesseract.js Execution
+        function runOCR(imageData) {
+            ocrProgressContainer.classList.remove('hidden');
+            ocrProgressBar.style.width = '0%';
+            ocrStatusText.textContent = 'Inicializando OCR...';
+            ocrPercent.textContent = '0%';
+
+            const lang = ocrLanguage.value || 'por';
+
+            Tesseract.recognize(
+                imageData,
+                lang,
+                {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const progress = Math.round((m.progress || 0) * 100);
+                            ocrProgressBar.style.width = `${progress}%`;
+                            ocrPercent.textContent = `${progress}%`;
+                            ocrStatusText.textContent = 'Reconhecendo caracteres...';
+                        } else if (m.status) {
+                            ocrStatusText.textContent = m.status;
+                        }
+                    }
+                }
+            ).then(({ data: { text } }) => {
+                ocrProgressContainer.classList.add('hidden');
+                
+                const cleanedText = text.trim();
+                if (cleanedText) {
+                    pageTextInput.value = cleanedText;
+                    charCounter.textContent = `${cleanedText.length} caracteres`;
+                    showToast("Texto reconhecido e processado com sucesso!", "success");
+                } else {
+                    showToast("Nenhum texto pôde ser lido. Tente ajustar o limiar P&B.", "warning");
+                }
+            }).catch(err => {
+                console.error("Erro OCR:", err);
+                ocrProgressContainer.classList.add('hidden');
+                showToast("Falha ao processar OCR da imagem.", "error");
+            });
+        }
+
+        function loadSampleData() {
+            bookTitleInput.value = SAMPLE_TITLE;
+            pageNumberInput.value = SAMPLE_PAGE;
+            pageTextInput.value = SAMPLE_TEXT;
+            charCounter.textContent = `${SAMPLE_TEXT.length} caracteres`;
+            showToast("Dados de exemplo carregados no formulário.", "info");
+        }
+
+        // Form Submit Action (Create / Update)
+        function handleFormSubmit(e) {
+            e.preventDefault();
+
+            const title = bookTitleInput.value.trim();
+            const pageNum = parseInt(pageNumberInput.value, 10);
+            const text = pageTextInput.value.trim();
+
+            if (!title || isNaN(pageNum) || !text) {
+                showToast("Preencha todos os campos obrigatórios.", "warning");
+                return;
+            }
+
+            if (activeEditId) {
+                // Update
+                const index = pages.findIndex(p => p.id === activeEditId);
+                if (index !== -1) {
+                    pages[index] = {
+                        ...pages[index],
+                        bookTitle: title,
+                        pageNumber: pageNum,
+                        content: text,
+                        updatedAt: new Date().toISOString()
+                    };
+                    showToast("Página atualizada com sucesso!", "success");
+                }
+            } else {
+                // Create
+                const newPage = {
+                    id: 'page_' + Date.now(),
+                    bookTitle: title,
+                    pageNumber: pageNum,
+                    content: text,
+                    createdAt: new Date().toISOString()
+                };
+                pages.unshift(newPage);
+                showToast("Página salva no acervo!", "success");
+            }
+
+            savePagesToStorage();
+            resetForm();
+            render();
+        }
+
+        function startEditing(id) {
+            const page = pages.find(p => p.id === id);
+            if (!page) return;
+
+            activeEditId = page.id;
+            editPageIdInput.value = page.id;
+            bookTitleInput.value = page.bookTitle;
+            pageNumberInput.value = page.pageNumber;
+            pageTextInput.value = page.content;
+            charCounter.textContent = `${page.content.length} caracteres`;
+
+            formTitleText.textContent = "Editar Página";
+            btnSaveText.textContent = "Atualizar Página";
+            btnCancelEdit.classList.remove('hidden');
+
+            window.scrollTo({ top: pageForm.offsetTop - 80, behavior: 'smooth' });
+        }
+
+        function resetForm() {
+            activeEditId = null;
+            editPageIdInput.value = '';
+            pageForm.reset();
+            charCounter.textContent = '0 caracteres';
+            
+            formTitleText.textContent = "Dados da Página";
+            btnSaveText.textContent = "Salvar Página";
+            btnCancelEdit.classList.add('hidden');
+            
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+            editorContainer.classList.add('hidden');
+            imageControls.classList.add('hidden');
+            processedPreviewBox.classList.add('hidden');
+            dropZoneContent.classList.remove('hidden');
+            fileInput.value = '';
+            ocrProgressContainer.classList.add('hidden');
+        }
+
+        function deletePage(id) {
+            if (confirm("Tem certeza de que deseja excluir esta página salva?")) {
+                pages = pages.filter(p => p.id !== id);
+                savePagesToStorage();
+                render();
+                showToast("Página excluída.", "info");
+            }
+        }
+
+        // Render Page List & Filters
+        function render() {
+            updateBookFilterOptions();
+
+            // Filtering
+            let filtered = pages.filter(page => {
+                const matchesBook = !currentFilterBook || page.bookTitle === currentFilterBook;
+                const matchesSearch = !currentSearchQuery || 
+                    page.bookTitle.toLowerCase().includes(currentSearchQuery) ||
+                    page.content.toLowerCase().includes(currentSearchQuery) ||
+                    page.pageNumber.toString().includes(currentSearchQuery);
+                return matchesBook && matchesSearch;
+            });
+
+            // Sort by page number then by creation date
+            filtered.sort((a, b) => a.pageNumber - b.pageNumber || new Date(b.createdAt) - new Date(a.createdAt));
+
+            resultsCount.textContent = `Mostrando ${filtered.length} de ${pages.length} página(s)`;
+            totalCount.textContent = pages.length;
+
+            if (filtered.length === 0) {
+                pagesList.innerHTML = `
+                    <div class="bg-white dark:bg-slate-900 rounded-2xl p-8 border border-slate-200 dark:border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
+                        <div class="p-3 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full">
+                            <i data-lucide="book-open-check" class="w-8 h-8"></i>
+                        </div>
+                        <p class="font-medium text-slate-600 dark:text-slate-300">Nenhuma página encontrada</p>
+                        <p class="text-xs text-slate-400 max-w-sm">
+                            ${pages.length === 0 ? 'Use o scanner e leitor ao lado para extrair o texto de uma página de livro e salvar no acervo.' : 'Tente ajustar os filtros de busca para encontrar o conteúdo.'}
+                        </p>
+                    </div>
+                `;
+            } else {
+                pagesList.innerHTML = filtered.map(page => `
+                    <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition flex flex-col justify-between space-y-3 group">
+                        <!-- Top Metadata -->
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <span class="inline-block px-2.5 py-0.5 text-[11px] font-semibold bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 rounded-md mb-1">
+                                    ${escapeHtml(page.bookTitle)}
+                                </span>
+                                <h3 class="font-bold text-slate-900 dark:text-white text-base">
+                                    Página ${page.pageNumber}
+                                </h3>
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="openReaderModal('${page.id}')" title="Modo Leitura" class="p-1.5 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition">
+                                    <i data-lucide="eye" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="copyToClipboard(\`${escapeJsString(page.content)}\`)" title="Copiar Texto" class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition">
+                                    <i data-lucide="copy" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="startEditing('${page.id}')" title="Editar" class="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition">
+                                    <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="deletePage('${page.id}')" title="Excluir" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Snippet Text -->
+                        <p class="font-serif text-sm text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+                            ${escapeHtml(page.content)}
+                        </p>
+
+                        <!-- Footer -->
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                            <span>Adicionado em: ${formatDate(page.createdAt)}</span>
+                            <span>${page.content.length} caracteres</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            lucide.createIcons();
+        }
+
+        function updateBookFilterOptions() {
+            const uniqueBooks = [...new Set(pages.map(p => p.bookTitle))].sort();
+            const currentSelected = bookFilter.value;
+
+            bookFilter.innerHTML = `<option value="">Todos os Livros (${uniqueBooks.length})</option>` +
+                uniqueBooks.map(b => `<option value="${escapeHtml(b)}" ${b === currentSelected ? 'selected' : ''}>${escapeHtml(b)}</option>`).join('');
+        }
+
+        // Reader Modal
+        function openReaderModal(id) {
+            const page = pages.find(p => p.id === id);
+            if (!page) return;
+
+            modalBookTitle.textContent = page.bookTitle;
+            modalPageNum.textContent = `Página ${page.pageNumber}`;
+            modalTextContent.innerText = page.content;
+            modalDate.textContent = `Salvo em ${formatDate(page.createdAt)}`;
+
+            readerModal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            readerModal.classList.add('hidden');
+        }
+
+        // Exports
+        function exportAsJSON() {
+            if (pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(pages, null, 2));
+            downloadFile(dataStr, `livros_export_${getTimestamp()}.json`);
+        }
+
+        function exportAsCSV() {
+            if (pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
+            let csvContent = "data:text/csv;charset=utf-8,ID,Livro,Pagina,Texto,DataCriacao\n";
+            
+            pages.forEach(p => {
+                const cleanContent = `"${p.content.replace(/"/g, '""')}"`;
+                const cleanTitle = `"${p.bookTitle.replace(/"/g, '""')}"`;
+                csvContent += `${p.id},${cleanTitle},${p.pageNumber},${cleanContent},${p.createdAt}\n`;
+            });
+
+            downloadFile(csvContent, `livros_export_${getTimestamp()}.csv`);
+        }
+
+        function exportAsTXT() {
+            if (pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
+            
+            let txtContent = "data:text/plain;charset=utf-8,=== ACERVO DE PÁGINAS DIGITALIZADAS ===\n\n";
+            
+            // Group by book
+            const books = {};
+            pages.forEach(p => {
+                if (!books[p.bookTitle]) books[p.bookTitle] = [];
+                books[p.bookTitle].push(p);
+            });
+
+            for (const book in books) {
+                txtContent += `=========================================\n`;
+                txtContent += `LIVRO: ${book.toUpperCase()}\n`;
+                txtContent += `=========================================\n\n`;
+
+                books[book].sort((a, b) => a.pageNumber - b.pageNumber).forEach(p => {
+                    txtContent += `--- Página ${p.pageNumber} ---\n`;
+                    txtContent += `${p.content}\n\n`;
+                });
+            }
+
+            downloadFile(txtContent, `livros_export_${getTimestamp()}.txt`);
+        }
+
+        function downloadFile(content, filename) {
+            const link = document.createElement('a');
+            link.setAttribute('href', content);
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast("Exportação iniciada!", "success");
+        }
+
+        // Helpers & Utilities
+        function copyToClipboard(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast("Texto copiado para a área de transferência!", "success");
+                });
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showToast("Texto copiado!", "success");
+            }
+        }
+
+        function showToast(message, type = "info") {
+            const toast = document.createElement('div');
+            const bgColors = {
+                success: 'bg-emerald-600 text-white',
+                error: 'bg-rose-600 text-white',
+                warning: 'bg-amber-500 text-white',
+                info: 'bg-slate-800 text-white'
+            };
+
+            toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl shadow-lg font-medium text-xs flex items-center space-x-2 transition-all transform translate-y-2 opacity-0 ${bgColors[type] || bgColors.info}`;
+            toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+
+            const container = document.getElementById('toastContainer');
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function formatDate(isoStr) {
+            if (!isoStr) return '';
+            const d = new Date(isoStr);
+            return d.toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function getTimestamp() {
+            return new Date().toISOString().slice(0, 10);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>"']/g, function(m) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                }[m];
+            });
+        }
+
+        function escapeJsString(str) {
+            if (!str) return '';
+            return str.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\${/g, '\\${');
+        }
+    </script>
+</body>
+</html>
