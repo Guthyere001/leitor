@@ -123,7 +123,7 @@
 
                 <!-- Drop Zone & Image Editor Canvas -->
                 <div id="dropZone" class="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl min-h-[220px] p-4 text-center hover:border-brand-500 dark:hover:border-brand-500 transition relative flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-900/50 overflow-hidden">
-                    <input type="file" id="fileInput" accept="image/*" class="hidden">
+                    <input type="file" id="fileInput" accept="image/*" capture="environment" class="hidden">
                     
                     <!-- Cropper Container -->
                     <div id="editorContainer" class="hidden w-full max-h-[320px] flex items-center justify-center overflow-hidden rounded-lg bg-black/40">
@@ -352,10 +352,109 @@
     <!-- Notification Toast Container -->
     <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
 
+    <!-- Firebase SDK Modular Import -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Config Setup
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'leitor-livros-app';
+        let firebaseConfig = {};
+        
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                firebaseConfig = JSON.parse(__firebase_config);
+            }
+        } catch(e) {
+            console.warn("Firebase Config não configurado via variável global.");
+        }
+
+        let db = null;
+        let auth = null;
+        let user = null;
+
+        if (firebaseConfig.apiKey) {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            async function authenticate() {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInWithCustomToken(auth, __initial_auth_token).catch(async () => {
+                            await signInAnonymously(auth);
+                        });
+                    }
+                } catch(e) {
+                    try {
+                        await signInAnonymously(auth);
+                    } catch(err) {
+                        console.error("Erro na autenticação Firebase:", err);
+                    }
+                }
+            }
+
+            onAuthStateChanged(auth, (u) => {
+                user = u;
+                if (user && db) {
+                    initCloudSync();
+                }
+            });
+
+            authenticate();
+        }
+
+        function initCloudSync() {
+            if (!user || !db) return;
+
+            // Escuta pública em tempo real
+            const pagesCol = collection(db, 'artifacts', appId, 'public', 'data', 'pages');
+            
+            onSnapshot(pagesCol, (snapshot) => {
+                const cloudPages = [];
+                snapshot.forEach((docSnap) => {
+                    cloudPages.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                
+                if (cloudPages.length > 0 || snapshot.metadata.fromCache === false) {
+                    window.pages = cloudPages;
+                    localStorage.setItem('book_reader_pages', JSON.stringify(window.pages));
+                    if (window.renderApp) window.renderApp();
+                }
+            }, (error) => {
+                console.error("Erro ao sincronizar Firestore em tempo real:", error);
+            });
+        }
+
+        // Expor funções assíncronas globalmente para o script legado
+        window.cloudSavePage = async function(pageData) {
+            if (!user || !db) return;
+            try {
+                const pageRef = doc(db, 'artifacts', appId, 'public', 'data', 'pages', pageData.id);
+                await setDoc(pageRef, pageData);
+            } catch(e) {
+                console.error("Erro ao salvar no Firestore:", e);
+            }
+        };
+
+        window.cloudDeletePage = async function(pageId) {
+            if (!user || !db) return;
+            try {
+                const pageRef = doc(db, 'artifacts', appId, 'public', 'data', 'pages', pageId);
+                await deleteDoc(pageRef);
+            } catch(e) {
+                console.error("Erro ao deletar no Firestore:", e);
+            }
+        };
+    </script>
+
     <!-- JavaScript Application Logic -->
     <script>
         // State Management
-        let pages = [];
+        window.pages = [];
         let currentFilterBook = '';
         let currentSearchQuery = '';
         let activeEditId = null;
@@ -435,16 +534,16 @@
         function loadPagesFromStorage() {
             try {
                 const stored = localStorage.getItem('book_reader_pages');
-                pages = stored ? JSON.parse(stored) : [];
+                window.pages = stored ? JSON.parse(stored) : [];
             } catch (e) {
                 console.error("Erro ao carregar do localStorage", e);
-                pages = [];
+                window.pages = [];
             }
         }
 
         function savePagesToStorage() {
             try {
-                localStorage.setItem('book_reader_pages', JSON.stringify(pages));
+                localStorage.setItem('book_reader_pages', JSON.stringify(window.pages));
             } catch (e) {
                 showToast("Erro ao salvar dados localmente", "error");
             }
@@ -766,17 +865,20 @@
                 return;
             }
 
+            let pageToSync = null;
+
             if (activeEditId) {
                 // Update
-                const index = pages.findIndex(p => p.id === activeEditId);
+                const index = window.pages.findIndex(p => p.id === activeEditId);
                 if (index !== -1) {
-                    pages[index] = {
-                        ...pages[index],
+                    window.pages[index] = {
+                        ...window.pages[index],
                         bookTitle: title,
                         pageNumber: pageNum,
                         content: text,
                         updatedAt: new Date().toISOString()
                     };
+                    pageToSync = window.pages[index];
                     showToast("Página atualizada com sucesso!", "success");
                 }
             } else {
@@ -788,17 +890,24 @@
                     content: text,
                     createdAt: new Date().toISOString()
                 };
-                pages.unshift(newPage);
+                window.pages.unshift(newPage);
+                pageToSync = newPage;
                 showToast("Página salva no acervo!", "success");
             }
 
             savePagesToStorage();
+            
+            // Nuvem Sync
+            if (pageToSync && window.cloudSavePage) {
+                window.cloudSavePage(pageToSync);
+            }
+
             resetForm();
             render();
         }
 
         function startEditing(id) {
-            const page = pages.find(p => p.id === id);
+            const page = window.pages.find(p => p.id === id);
             if (!page) return;
 
             activeEditId = page.id;
@@ -839,8 +948,13 @@
 
         function deletePage(id) {
             if (confirm("Tem certeza de que deseja excluir esta página salva?")) {
-                pages = pages.filter(p => p.id !== id);
+                window.pages = window.pages.filter(p => p.id !== id);
                 savePagesToStorage();
+
+                if (window.cloudDeletePage) {
+                    window.cloudDeletePage(id);
+                }
+
                 render();
                 showToast("Página excluída.", "info");
             }
@@ -851,7 +965,7 @@
             updateBookFilterOptions();
 
             // Filtering
-            let filtered = pages.filter(page => {
+            let filtered = window.pages.filter(page => {
                 const matchesBook = !currentFilterBook || page.bookTitle === currentFilterBook;
                 const matchesSearch = !currentSearchQuery || 
                     page.bookTitle.toLowerCase().includes(currentSearchQuery) ||
@@ -863,8 +977,8 @@
             // Sort by page number then by creation date
             filtered.sort((a, b) => a.pageNumber - b.pageNumber || new Date(b.createdAt) - new Date(a.createdAt));
 
-            resultsCount.textContent = `Mostrando ${filtered.length} de ${pages.length} página(s)`;
-            totalCount.textContent = pages.length;
+            resultsCount.textContent = `Mostrando ${filtered.length} de ${window.pages.length} página(s)`;
+            totalCount.textContent = window.pages.length;
 
             if (filtered.length === 0) {
                 pagesList.innerHTML = `
@@ -874,7 +988,7 @@
                         </div>
                         <p class="font-medium text-slate-600 dark:text-slate-300">Nenhuma página encontrada</p>
                         <p class="text-xs text-slate-400 max-w-sm">
-                            ${pages.length === 0 ? 'Use o scanner e leitor ao lado para extrair o texto de uma página de livro e salvar no acervo.' : 'Tente ajustar os filtros de busca para encontrar o conteúdo.'}
+                            ${window.pages.length === 0 ? 'Use o scanner e leitor ao lado para extrair o texto de uma página de livro e salvar no acervo.' : 'Tente ajustar os filtros de busca para encontrar o conteúdo.'}
                         </p>
                     </div>
                 `;
@@ -924,8 +1038,10 @@
             lucide.createIcons();
         }
 
+        window.renderApp = render;
+
         function updateBookFilterOptions() {
-            const uniqueBooks = [...new Set(pages.map(p => p.bookTitle))].sort();
+            const uniqueBooks = [...new Set(window.pages.map(p => p.bookTitle))].sort();
             const currentSelected = bookFilter.value;
 
             bookFilter.innerHTML = `<option value="">Todos os Livros (${uniqueBooks.length})</option>` +
@@ -934,7 +1050,7 @@
 
         // Reader Modal
         function openReaderModal(id) {
-            const page = pages.find(p => p.id === id);
+            const page = window.pages.find(p => p.id === id);
             if (!page) return;
 
             modalBookTitle.textContent = page.bookTitle;
@@ -951,16 +1067,16 @@
 
         // Exports
         function exportAsJSON() {
-            if (pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(pages, null, 2));
+            if (window.pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(window.pages, null, 2));
             downloadFile(dataStr, `livros_export_${getTimestamp()}.json`);
         }
 
         function exportAsCSV() {
-            if (pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
+            if (window.pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
             let csvContent = "data:text/csv;charset=utf-8,ID,Livro,Pagina,Texto,DataCriacao\n";
             
-            pages.forEach(p => {
+            window.pages.forEach(p => {
                 const cleanContent = `"${p.content.replace(/"/g, '""')}"`;
                 const cleanTitle = `"${p.bookTitle.replace(/"/g, '""')}"`;
                 csvContent += `${p.id},${cleanTitle},${p.pageNumber},${cleanContent},${p.createdAt}\n`;
@@ -970,13 +1086,13 @@
         }
 
         function exportAsTXT() {
-            if (pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
+            if (window.pages.length === 0) return showToast("Nenhum dado para exportar", "warning");
             
             let txtContent = "data:text/plain;charset=utf-8,=== ACERVO DE PÁGINAS DIGITALIZADAS ===\n\n";
             
             // Group by book
             const books = {};
-            pages.forEach(p => {
+            window.pages.forEach(p => {
                 if (!books[p.bookTitle]) books[p.bookTitle] = [];
                 books[p.bookTitle].push(p);
             });
